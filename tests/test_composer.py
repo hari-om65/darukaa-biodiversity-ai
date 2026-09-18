@@ -31,27 +31,47 @@ def _ensure_knowledge_base_ingested():
     ingest_all()
 
 
-class _FakeParsedResponse:
-    def __init__(self, parsed_output):
-        self.parsed_output = parsed_output
+class _FakeMessage:
+    def __init__(self, content: str):
+        self.content = content
 
 
-class _FakeMessages:
+class _FakeChoice:
+    def __init__(self, content: str):
+        self.message = _FakeMessage(content)
+
+
+class _FakeChatCompletion:
+    def __init__(self, content: str):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeCompletions:
     def __init__(self, outcomes):
         self._outcomes = list(outcomes)
         self.call_count = 0
 
-    def parse(self, **kwargs):
+    def create(self, **kwargs):
         outcome = self._outcomes[self.call_count]
         self.call_count += 1
         if isinstance(outcome, Exception):
             raise outcome
-        return _FakeParsedResponse(outcome)
+        content = outcome.model_dump_json() if isinstance(outcome, RecommendationsResponse) else outcome
+        return _FakeChatCompletion(content)
+
+
+class _FakeChat:
+    def __init__(self, outcomes):
+        self.completions = _FakeCompletions(outcomes)
 
 
 class _FakeClient:
     def __init__(self, outcomes):
-        self.messages = _FakeMessages(outcomes)
+        self.chat = _FakeChat(outcomes)
+
+    @property
+    def call_count(self) -> int:
+        return self.chat.completions.call_count
 
 
 def _recommendation(sources: list[str]) -> RecommendationsResponse:
@@ -126,7 +146,7 @@ def test_compose_recommendations_retries_once_on_ungrounded_sources():
     result = compose_recommendations(WHEAT_INPUTS, client=fake_client)
 
     assert isinstance(result, RecommendationsResponse)
-    assert fake_client.messages.call_count == 2
+    assert fake_client.call_count == 2
     assert result.recommendations[0].sources == [real_source]
 
 
@@ -141,17 +161,22 @@ def test_compose_recommendations_raises_after_second_failure():
     with pytest.raises(RuntimeError):
         compose_recommendations(WHEAT_INPUTS, client=fake_client)
 
-    assert fake_client.messages.call_count == 2
+    assert fake_client.call_count == 2
 
 
-class _ExplodingMessages:
-    def parse(self, **kwargs):
+class _ExplodingCompletions:
+    def create(self, **kwargs):
         raise AssertionError("the API should not be called when no chains are triggered")
+
+
+class _ExplodingChat:
+    def __init__(self):
+        self.completions = _ExplodingCompletions()
 
 
 class _ExplodingClient:
     def __init__(self):
-        self.messages = _ExplodingMessages()
+        self.chat = _ExplodingChat()
 
 
 def test_compose_recommendations_skips_api_call_when_no_chains_triggered():
@@ -229,8 +254,8 @@ def test_build_user_prompt_includes_inputs_chains_and_evidence():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="requires a real ANTHROPIC_API_KEY to call the Anthropic API",
+    not os.environ.get("GROQ_API_KEY"),
+    reason="requires a real GROQ_API_KEY to call the Groq API",
 )
 def test_compose_recommendations_live_semi_arid_wheat():
     result = compose_recommendations(WHEAT_INPUTS)

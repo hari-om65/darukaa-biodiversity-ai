@@ -2,7 +2,7 @@
 
 For each causal reasoning chain produced by reasoning.engine.analyze(), retrieves
 scoped evidence from the knowledge base via knowledge.ingestion.ingest.retrieve(),
-then makes one call to the Anthropic API asking for structured, JSON-only
+then makes one call to the Groq API asking for structured, JSON-only
 recommendations that must be grounded in that retrieved evidence. The response is
 validated with Pydantic and, on parse/validation failure, retried once.
 """
@@ -13,15 +13,15 @@ import json
 import os
 from typing import Any
 
-import anthropic
+from groq import Groq
 from pydantic import ValidationError
 
 from app.schemas.recommendations import RecommendationsResponse
 from knowledge.ingestion.ingest import retrieve
 from reasoning.engine import analyze
 
-# Override with ANTHROPIC_MODEL to pin a different model without a code change.
-MODEL_NAME = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# Override with GROQ_MODEL to pin a different model without a code change.
+MODEL_NAME = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = 4096
 EVIDENCE_K = 3
 
@@ -128,9 +128,36 @@ def _validate_sources_are_grounded(result: RecommendationsResponse, valid_source
             raise ValueError(f"Recommendation '{rec.action}' cites unknown sources: {unknown}")
 
 
+def _make_schema_strict(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively add "additionalProperties": false to every object in a
+    pydantic-generated JSON schema (including nested $defs), which Groq's
+    (OpenAI-compatible) strict structured-output mode requires but pydantic
+    doesn't set by default."""
+    if schema.get("type") == "object" or "properties" in schema:
+        schema["additionalProperties"] = False
+    for value in schema.values():
+        if isinstance(value, dict):
+            _make_schema_strict(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _make_schema_strict(item)
+    return schema
+
+
+_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "recommendations_response",
+        "schema": _make_schema_strict(RecommendationsResponse.model_json_schema()),
+        "strict": True,
+    },
+}
+
+
 def compose_recommendations_with_evidence(
     inputs: dict[str, Any],
-    client: anthropic.Anthropic | None = None,
+    client: Groq | None = None,
 ) -> tuple[RecommendationsResponse, list[dict[str, Any]]]:
     """Build one evidence-grounded prompt from `inputs` and return validated
     recommendations, along with the enriched chains (each reasoning chain plus
@@ -144,7 +171,7 @@ def compose_recommendations_with_evidence(
     appended to the prompt) if the response fails JSON parsing, Pydantic
     validation, or evidence-grounding validation.
     """
-    client = client or anthropic.Anthropic()
+    client = client or Groq()
 
     enriched_chains = gather_chain_evidence(inputs)
     if not enriched_chains:
@@ -164,14 +191,17 @@ def compose_recommendations_with_evidence(
             )
 
         try:
-            response = client.messages.parse(
+            response = client.chat.completions.create(
                 model=MODEL_NAME,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}],
-                output_format=RecommendationsResponse,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format=_RESPONSE_FORMAT,
             )
-            result = response.parsed_output
+            content = response.choices[0].message.content
+            result = RecommendationsResponse.model_validate(json.loads(content))
             _validate_sources_are_grounded(result, valid_sources)
             return result, enriched_chains
         except (ValidationError, ValueError, json.JSONDecodeError) as exc:
@@ -182,7 +212,7 @@ def compose_recommendations_with_evidence(
 
 def compose_recommendations(
     inputs: dict[str, Any],
-    client: anthropic.Anthropic | None = None,
+    client: Groq | None = None,
 ) -> RecommendationsResponse:
     """Build one evidence-grounded prompt from `inputs` and return validated
     recommendations. See compose_recommendations_with_evidence() for a variant

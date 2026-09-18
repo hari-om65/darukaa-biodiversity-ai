@@ -2,30 +2,45 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chat_session import reset_sessions
-from app.dependencies import get_anthropic_client
+from app.dependencies import get_groq_client
 from app.main import app
 from app.schemas.recommendations import RecommendationsResponse
 from knowledge.ingestion.ingest import ingest_all, retrieve
 
 
-class _FakeParsedResponse:
-    def __init__(self, parsed_output):
-        self.parsed_output = parsed_output
+class _FakeMessage:
+    def __init__(self, content: str):
+        self.content = content
 
 
-class _FakeMessages:
-    def __init__(self, output):
+class _FakeChoice:
+    def __init__(self, content: str):
+        self.message = _FakeMessage(content)
+
+
+class _FakeChatCompletion:
+    def __init__(self, content: str):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeCompletions:
+    def __init__(self, output: RecommendationsResponse):
         self._output = output
         self.call_count = 0
 
-    def parse(self, **kwargs):
+    def create(self, **kwargs):
         self.call_count += 1
-        return _FakeParsedResponse(self._output)
+        return _FakeChatCompletion(self._output.model_dump_json())
+
+
+class _FakeChat:
+    def __init__(self, output: RecommendationsResponse):
+        self.completions = _FakeCompletions(output)
 
 
 class _FakeClient:
-    def __init__(self, output):
-        self.messages = _FakeMessages(output)
+    def __init__(self, output: RecommendationsResponse):
+        self.chat = _FakeChat(output)
 
 
 def _fake_recommendations(sources: list[str]) -> RecommendationsResponse:
@@ -59,7 +74,7 @@ def _clean_sessions():
 
 
 def _override_with_fake_client(sources: list[str]) -> None:
-    app.dependency_overrides[get_anthropic_client] = lambda: _FakeClient(
+    app.dependency_overrides[get_groq_client] = lambda: _FakeClient(
         _fake_recommendations(sources)
     )
 
@@ -155,7 +170,7 @@ def test_three_turn_conversation_reaches_recommendation():
         assert mapping["sources"] == [real_source]
         assert mapping["supporting_chains"]
     finally:
-        app.dependency_overrides.pop(get_anthropic_client, None)
+        app.dependency_overrides.pop(get_groq_client, None)
 
 
 def test_chat_structured_skips_clarification():
@@ -181,7 +196,7 @@ def test_chat_structured_skips_clarification():
         assert body["missing_fields"] == []
         assert body["recommendations"] is not None
     finally:
-        app.dependency_overrides.pop(get_anthropic_client, None)
+        app.dependency_overrides.pop(get_groq_client, None)
 
 
 def test_chat_structured_rejects_incomplete_input():

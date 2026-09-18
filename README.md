@@ -3,7 +3,7 @@
 An API that turns a handful of site variables (soil organic carbon, rainfall,
 crop/land-use, region) into evidence-grounded biodiversity recommendations. A
 small causal graph identifies which downstream effects are plausible, a
-ChromaDB knowledge base supplies the evidence for each effect, and Claude
+ChromaDB knowledge base supplies the evidence for each effect, and Llama (via Groq)
 turns the two into specific, cited recommendations — never generic advice,
 never an invented statistic.
 
@@ -29,7 +29,7 @@ reasoning/          knowledge/                    app/
 │ thresholds.yaml│   │   → ingest.py       │       │  health / chat / whatif│
 │   → engine.py │    │   → ChromaDB        │       │ composer.py            │
 │  analyze()    │    │  retrieve()         │       │  gather evidence per   │
-└──────┬────────┘    └──────────┬──────────┘       │  chain, call Claude,   │
+└──────┬────────┘    └──────────┬──────────┘       │  chain, call Groq,     │
        │                        │                   │  validate with pydantic│
        └───────────┬────────────┘                   └───────────┬───────────┘
                     ▼                                            │
@@ -51,13 +51,13 @@ reasoning/          knowledge/                    app/
   topic tags.
 - **`app/composer.py`** — for every causal chain `analyze()` finds, retrieves
   evidence scoped to that chain's topics, builds one prompt containing all of
-  it, and asks Claude for structured JSON recommendations. Every recommendation
+  it, and asks Groq (Llama) for structured JSON recommendations. Every recommendation
   must cite evidence actually retrieved for this request; the response is
   validated with Pydantic and retried once if it fails.
 - **`app/routers/`** — `/chat` and `/chat/structured` run the full pipeline
   and return recommendations plus a natural-language summary; `/whatif` runs
   just the reasoning half, letting you simulate a variable change without
-  calling Claude.
+  calling Groq.
 - **`frontend/`** — a minimal Streamlit page (currently just a health check;
   not the primary interface).
 
@@ -142,7 +142,7 @@ pip install -r requirements.txt
 
 # 4. Configure secrets
 cp .env.example .env
-#   then edit .env and set ANTHROPIC_API_KEY
+#   then edit .env and set GROQ_API_KEY
 
 # 5. Populate the knowledge base (idempotent; re-run any time sources change)
 python -m knowledge.ingestion.ingest
@@ -164,10 +164,10 @@ pytest
 
 The first run downloads the `all-MiniLM-L6-v2` embedding model from Hugging
 Face (a one-time ~90MB download, cached under `~/.cache/huggingface`
-afterward). Tests that call the Anthropic API for real
+afterward). Tests that call the Groq API for real
 (`tests/test_composer.py::test_compose_recommendations_live_semi_arid_wheat`)
-are skipped automatically unless `ANTHROPIC_API_KEY` is set — everything else
-exercises the composer/chat/whatif logic against a fake Anthropic client, so
+are skipped automatically unless `GROQ_API_KEY` is set — everything else
+exercises the composer/chat/whatif logic against a fake Groq client, so
 the rest of the suite runs free and offline.
 
 Lint with:
@@ -203,15 +203,16 @@ variations on the same core — see [API reference](#api-reference)):
    retrieves up to 3 evidence chunks from ChromaDB, scoped to the topic tags
    relevant to that chain's nodes (e.g. a chain rooted at `soil_organic_carbon`
    is scoped to the `soil` tag). If a tag-scoped search comes back empty, it
-   falls back to an unscoped search rather than sending Claude zero evidence.
+   falls back to an unscoped search rather than sending the model zero evidence.
 6. **Composition.** `compose_recommendations_with_evidence()` builds one
    prompt — the site inputs, every chain, and its evidence — and calls the
-   Anthropic API (`client.messages.parse`, model `claude-sonnet-4-6` by
-   default, see `ANTHROPIC_MODEL` in `.env.example`) with
-   `output_format=RecommendationsResponse`, forcing structured JSON that
-   Pydantic validates. The system prompt forbids generic advice and invented
-   statistics, and requires every recommendation's mechanism and cited
-   sources to trace back to the retrieved evidence.
+   Groq API (`client.chat.completions.create`, model
+   `llama-3.3-70b-versatile` by default, see `GROQ_MODEL` in `.env.example`)
+   with a strict `json_schema` response format built from
+   `RecommendationsResponse`'s Pydantic schema, forcing structured JSON that
+   Pydantic then validates. The system prompt forbids generic advice and
+   invented statistics, and requires every recommendation's mechanism and
+   cited sources to trace back to the retrieved evidence.
 7. **Grounding check + retry.** A post-hoc check rejects any recommendation
    that cites a source it wasn't actually given as evidence (catches citation
    hallucination that schema validation alone can't). On any parse, Pydantic,
@@ -238,7 +239,7 @@ heuristic proxy, not a calibrated forecast, in its own docstring).
 | `GET /health` | Liveness check → `{"status": "ok"}` |
 | `POST /chat` | Conversational entry point; clarifies missing variables, then runs the full pipeline |
 | `POST /chat/structured` | Same pipeline, but takes a complete `{session_id, inputs}` payload and skips clarification (422 if incomplete) |
-| `POST /whatif` | Simulates one variable change against a session's known variables; reasoning only, no Claude call |
+| `POST /whatif` | Simulates one variable change against a session's known variables; reasoning only, no Groq call |
 
 See `/docs` (Swagger UI) on a running instance for full request/response
 schemas, or the Pydantic models under `app/schemas/`.
@@ -251,8 +252,8 @@ two parallel jobs:
 - **`test`** — installs `requirements.txt`, then runs `pytest`. The
   `all-MiniLM-L6-v2` model download is cached across runs
   (`~/.cache/huggingface`, keyed by a fixed cache key since the model doesn't
-  change). If the `ANTHROPIC_API_KEY` repository secret is configured, it's
-  passed through as an env var and the one live Anthropic test runs for real;
+  change). If the `GROQ_API_KEY` repository secret is configured, it's
+  passed through as an env var and the one live Groq test runs for real;
   otherwise that single test is skipped and everything else still runs.
 - **`lint`** — installs `requirements.txt`, then runs `ruff check .`. Config
   lives in `pyproject.toml` (line length 120, target Python 3.11).
@@ -284,11 +285,11 @@ a Docker-based web service from the `Dockerfile`.
 1. Push the repo to GitHub (or GitLab).
 2. In the Render dashboard: **New +** → **Blueprint**, and point it at the repo.
    Render reads `render.yaml` and provisions the service.
-3. On the service's **Environment** tab, set `ANTHROPIC_API_KEY` (required)
+3. On the service's **Environment** tab, set `GROQ_API_KEY` (required)
    and, if you want a non-default store location, `CHROMA_DB_DIR` — both are
    declared in `render.yaml` with `sync: false`, so Render prompts for them
-   rather than expecting a value in the file. `ANTHROPIC_MODEL` already
-   defaults to `claude-sonnet-4-6` there; override it the same way if needed.
+   rather than expecting a value in the file. `GROQ_MODEL` already
+   defaults to `llama-3.3-70b-versatile` there; override it the same way if needed.
 4. Deploy. Render builds the `Dockerfile` (ingestion runs as part of the
    build), starts the container, and binds it to the `$PORT` it injects — the
    Dockerfile's `CMD` already reads that.
@@ -301,8 +302,8 @@ file needed.
 
 1. Push the repo to GitHub.
 2. In Railway: **New Project** → **Deploy from GitHub repo**, select this repo.
-3. Under **Variables**, set `ANTHROPIC_API_KEY` (required), and optionally
-   `ANTHROPIC_MODEL` / `CHROMA_DB_DIR`.
+3. Under **Variables**, set `GROQ_API_KEY` (required), and optionally
+   `GROQ_MODEL` / `CHROMA_DB_DIR`.
 4. Railway builds the `Dockerfile` (same build-time ingestion as Render) and
    deploys, injecting its own `$PORT`, which the Dockerfile's `CMD` respects.
 5. Confirm with `curl https://<your-app>.up.railway.app/health`.
@@ -329,11 +330,11 @@ local dev) — set it to point at whichever backend you deployed above.
 app/
   routers/            health.py, chat.py, whatif.py
   schemas/             pydantic request/response models
-  composer.py           reasoning + retrieval + Claude → recommendations
+  composer.py           reasoning + retrieval + Groq (Llama) → recommendations
   chat_session.py       in-memory per-session state
   chat_extraction.py    rule-based slot-filling for /chat
   explain_builder.py    builds the explain payload shared by /chat & /whatif
-  dependencies.py       FastAPI-injected Anthropic client
+  dependencies.py       FastAPI-injected Groq client
   main.py                FastAPI app + router registration
 knowledge/
   sources/               source documents (.md, with YAML frontmatter)

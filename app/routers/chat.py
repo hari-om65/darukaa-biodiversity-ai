@@ -1,10 +1,10 @@
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException
+from groq import Groq
 
 from app.chat_extraction import build_clarifying_message, extract_variables, missing_fields
 from app.chat_session import get_session
 from app.composer import compose_recommendations_with_evidence
-from app.dependencies import get_anthropic_client
+from app.dependencies import get_groq_client
 from app.explain_builder import build_explain
 from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest
 from app.schemas.recommendations import RecommendationsResponse
@@ -30,7 +30,7 @@ def _summarize(recommendations: RecommendationsResponse) -> str:
 @router.post("/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
-    anthropic_client: anthropic.Anthropic = Depends(get_anthropic_client),
+    groq_client: Groq = Depends(get_groq_client),
 ) -> ChatResponse:
     session = get_session(request.session_id)
     session.history.append({"role": "user", "content": request.message})
@@ -52,7 +52,7 @@ def chat(
         )
 
     recommendations, enriched_chains = compose_recommendations_with_evidence(
-        session.variables, client=anthropic_client
+        session.variables, client=groq_client
     )
     reply = _summarize(recommendations)
     session.history.append({"role": "assistant", "content": reply})
@@ -70,7 +70,7 @@ def chat(
 @router.post("/chat/structured", response_model=ChatResponse)
 def chat_structured(
     request: StructuredChatRequest,
-    anthropic_client: anthropic.Anthropic = Depends(get_anthropic_client),
+    groq_client: Groq = Depends(get_groq_client),
 ) -> ChatResponse:
     session = get_session(request.session_id)
     session.variables.update(request.inputs)
@@ -84,7 +84,7 @@ def chat_structured(
         )
 
     recommendations, enriched_chains = compose_recommendations_with_evidence(
-        session.variables, client=anthropic_client
+        session.variables, client=groq_client
     )
     reply = _summarize(recommendations)
     session.history.append({"role": "assistant", "content": reply})

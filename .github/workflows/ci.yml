@@ -31,10 +31,10 @@ jobs:
 
       - name: Run tests
         env:
-          # Optional: set the ANTHROPIC_API_KEY secret in the repo settings to
+          # Optional: set the GROQ_API_KEY secret in the repo settings to
           # also run the live end-to-end composer test against the real API.
           # It's skipped automatically when this is unset.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: pytest
 
   lint:

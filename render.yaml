@@ -16,9 +16,9 @@ services:
       # Values are set in the Render dashboard's Environment tab, not here -
       # sync: false means "don't sync from a linked env group; prompt for it
       # in the dashboard instead". Never commit real values to this file.
-      - key: ANTHROPIC_API_KEY
+      - key: GROQ_API_KEY
         sync: false
-      - key: ANTHROPIC_MODEL
-        value: claude-sonnet-4-6
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
       - key: CHROMA_DB_DIR
         sync: false

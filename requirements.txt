@@ -8,5 +8,5 @@ networkx
 pyyaml
 streamlit
 pytest
-anthropic
+groq
 ruff
