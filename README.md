@@ -3,7 +3,7 @@
 An API that turns a handful of site variables (soil organic carbon, rainfall,
 crop/land-use, region) into evidence-grounded biodiversity recommendations. A
 small causal graph identifies which downstream effects are plausible, a
-ChromaDB knowledge base supplies the evidence for each effect, and Llama (via Groq)
+ChromaDB knowledge base supplies the evidence for each effect, and an LLM served by Groq
 turns the two into specific, cited recommendations — never generic advice,
 never an invented statistic.
 
@@ -51,7 +51,7 @@ reasoning/          knowledge/                    app/
   topic tags.
 - **`app/composer.py`** — for every causal chain `analyze()` finds, retrieves
   evidence scoped to that chain's topics, builds one prompt containing all of
-  it, and asks Groq (Llama) for structured JSON recommendations. Every recommendation
+  it, and asks Groq for structured JSON recommendations. Every recommendation
   must cite evidence actually retrieved for this request; the response is
   validated with Pydantic and retried once if it fails.
 - **`app/routers/`** — `/chat` and `/chat/structured` run the full pipeline
@@ -207,7 +207,7 @@ variations on the same core — see [API reference](#api-reference)):
 6. **Composition.** `compose_recommendations_with_evidence()` builds one
    prompt — the site inputs, every chain, and its evidence — and calls the
    Groq API (`client.chat.completions.create`, model
-   `llama-3.3-70b-versatile` by default, see `GROQ_MODEL` in `.env.example`)
+   `openai/gpt-oss-120b` by default, see `GROQ_MODEL` in `.env.example`)
    with a strict `json_schema` response format built from
    `RecommendationsResponse`'s Pydantic schema, forcing structured JSON that
    Pydantic then validates. The system prompt forbids generic advice and
@@ -289,7 +289,7 @@ a Docker-based web service from the `Dockerfile`.
    and, if you want a non-default store location, `CHROMA_DB_DIR` — both are
    declared in `render.yaml` with `sync: false`, so Render prompts for them
    rather than expecting a value in the file. `GROQ_MODEL` already
-   defaults to `llama-3.3-70b-versatile` there; override it the same way if needed.
+   defaults to `openai/gpt-oss-120b` there; override it the same way if needed.
 4. Deploy. Render builds the `Dockerfile` (ingestion runs as part of the
    build), starts the container, and binds it to the `$PORT` it injects — the
    Dockerfile's `CMD` already reads that.
@@ -330,7 +330,7 @@ local dev) — set it to point at whichever backend you deployed above.
 app/
   routers/            health.py, chat.py, whatif.py
   schemas/             pydantic request/response models
-  composer.py           reasoning + retrieval + Groq (Llama) → recommendations
+  composer.py           reasoning + retrieval + Groq → recommendations
   chat_session.py       in-memory per-session state
   chat_extraction.py    rule-based slot-filling for /chat
   explain_builder.py    builds the explain payload shared by /chat & /whatif

@@ -21,7 +21,7 @@ from knowledge.ingestion.ingest import retrieve
 from reasoning.engine import analyze
 
 # Override with GROQ_MODEL to pin a different model without a code change.
-MODEL_NAME = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+MODEL_NAME = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 MAX_TOKENS = 4096
 EVIDENCE_K = 3
 
