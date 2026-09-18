@@ -10,6 +10,7 @@ validated with Pydantic and, on parse/validation failure, retried once.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import anthropic
@@ -19,7 +20,8 @@ from app.schemas.recommendations import RecommendationsResponse
 from knowledge.ingestion.ingest import retrieve
 from reasoning.engine import analyze
 
-MODEL_NAME = "claude-sonnet-4-6"
+# Override with ANTHROPIC_MODEL to pin a different model without a code change.
+MODEL_NAME = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 MAX_TOKENS = 4096
 EVIDENCE_K = 3
 

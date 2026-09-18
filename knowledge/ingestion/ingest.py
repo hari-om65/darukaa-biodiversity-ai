@@ -17,6 +17,7 @@ in the ChromaDB collection "biodiversity_knowledge".
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,8 @@ from sentence_transformers import SentenceTransformer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SOURCES_DIR = BASE_DIR / "sources"
-CHROMA_DIR = BASE_DIR / "chroma_db"
+# Override with CHROMA_DB_DIR to point at a persistent volume in production.
+CHROMA_DIR = Path(os.environ.get("CHROMA_DB_DIR", str(BASE_DIR / "chroma_db")))
 COLLECTION_NAME = "biodiversity_knowledge"
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 

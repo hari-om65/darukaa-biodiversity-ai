@@ -2,7 +2,14 @@ import os
 
 import pytest
 
-from app.composer import _collect_valid_sources, compose_recommendations, gather_chain_evidence
+from app.composer import (
+    _collect_valid_sources,
+    _validate_sources_are_grounded,
+    build_user_prompt,
+    compose_recommendations,
+    compose_recommendations_with_evidence,
+    gather_chain_evidence,
+)
 from app.schemas.recommendations import RecommendationsResponse
 from knowledge.ingestion.ingest import ingest_all
 
@@ -73,6 +80,38 @@ def test_gather_chain_evidence_returns_evidence_for_wheat_scenario():
     assert any(chain["evidence"] for chain in enriched)
 
 
+def test_gather_chain_evidence_returns_empty_when_nothing_triggers():
+    assert gather_chain_evidence({}) == []
+
+
+def test_gather_chain_evidence_falls_back_to_unscoped_search_when_tag_scoped_is_empty(
+    monkeypatch,
+):
+    calls = []
+
+    def fake_retrieve(query, tags=None, k=4, client=None):
+        calls.append(tags)
+        if tags:
+            return []  # simulate an empty tag-scoped result
+        return [
+            {
+                "id": "fallback-0",
+                "text": "fallback chunk",
+                "metadata": {"source": "fallback.md", "year": 2020, "topic_tags": "soil"},
+                "distance": 0.1,
+            }
+        ]
+
+    monkeypatch.setattr("app.composer.retrieve", fake_retrieve)
+
+    enriched = gather_chain_evidence({"soil_organic_carbon": 0.3})
+
+    assert enriched
+    assert all(chain["evidence"] for chain in enriched)
+    assert any(tags for tags in calls)  # a tag-scoped call happened first
+    assert any(tags is None for tags in calls)  # and the unscoped fallback ran
+
+
 def test_compose_recommendations_retries_once_on_ungrounded_sources():
     valid_sources = _collect_valid_sources(gather_chain_evidence(WHEAT_INPUTS))
     real_source = next(iter(valid_sources))
@@ -103,6 +142,90 @@ def test_compose_recommendations_raises_after_second_failure():
         compose_recommendations(WHEAT_INPUTS, client=fake_client)
 
     assert fake_client.messages.call_count == 2
+
+
+class _ExplodingMessages:
+    def parse(self, **kwargs):
+        raise AssertionError("the API should not be called when no chains are triggered")
+
+
+class _ExplodingClient:
+    def __init__(self):
+        self.messages = _ExplodingMessages()
+
+
+def test_compose_recommendations_skips_api_call_when_no_chains_triggered():
+    result = compose_recommendations({}, client=_ExplodingClient())
+
+    assert result == RecommendationsResponse(recommendations=[])
+
+
+def test_compose_recommendations_with_evidence_returns_chains_used_for_prompt():
+    valid_sources = _collect_valid_sources(gather_chain_evidence(WHEAT_INPUTS))
+    real_source = next(iter(valid_sources))
+    fake_client = _FakeClient(outcomes=[_recommendation([real_source])])
+
+    result, enriched_chains = compose_recommendations_with_evidence(WHEAT_INPUTS, client=fake_client)
+
+    assert isinstance(result, RecommendationsResponse)
+    assert enriched_chains
+    assert all("evidence" in chain for chain in enriched_chains)
+    assert {chain["path"][0] for chain in enriched_chains} == {
+        "soil_organic_carbon",
+        "rainfall",
+        "monoculture",
+    }
+
+
+def test_validate_sources_are_grounded_raises_on_unknown_source():
+    result = _recommendation(["unknown.md"])
+
+    with pytest.raises(ValueError, match="unknown.md"):
+        _validate_sources_are_grounded(result, valid_sources={"known.md"})
+
+
+def test_validate_sources_are_grounded_passes_when_sources_are_known():
+    result = _recommendation(["known.md"])
+
+    _validate_sources_are_grounded(result, valid_sources={"known.md"})  # must not raise
+
+
+def test_build_user_prompt_includes_inputs_chains_and_evidence():
+    chains = [
+        {
+            "path": ["soil_organic_carbon", "microbial_diversity"],
+            "affected_metric": "microbial_diversity",
+            "relation": "positive",
+            "strength": "high",
+            "evidence": [
+                {
+                    "text": "Soil organic carbon supports microbial diversity.",
+                    "metadata": {
+                        "source": "soil_organic_carbon.md",
+                        "year": 2020,
+                        "topic_tags": "soil,biodiversity",
+                    },
+                }
+            ],
+        },
+        {
+            "path": ["rainfall", "species_survival"],
+            "affected_metric": "species_survival",
+            "relation": "positive",
+            "strength": "high",
+            "evidence": [],
+        },
+    ]
+
+    prompt = build_user_prompt({"soil_organic_carbon": 0.3}, chains)
+
+    assert "## Site inputs" in prompt
+    assert '"soil_organic_carbon": 0.3' in prompt
+    assert "soil_organic_carbon -> microbial_diversity" in prompt
+    assert "source: soil_organic_carbon.md | year: 2020 | tags: soil,biodiversity" in prompt
+    assert "Soil organic carbon supports microbial diversity." in prompt
+    assert "rainfall -> species_survival" in prompt
+    assert "evidence: none retrieved for this chain" in prompt
 
 
 @pytest.mark.skipif(

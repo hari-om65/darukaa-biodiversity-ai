@@ -5,6 +5,7 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
 .chroma/
 knowledge/chroma_db/*
 !knowledge/chroma_db/.gitkeep
