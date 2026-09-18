@@ -58,8 +58,9 @@ reasoning/          knowledge/                    app/
   and return recommendations plus a natural-language summary; `/whatif` runs
   just the reasoning half, letting you simulate a variable change without
   calling Groq.
-- **`frontend/`** — a minimal Streamlit page (currently just a health check;
-  not the primary interface).
+- **`frontend/`** — a Streamlit client for the API: a chat interface plus a
+  structured-input form, both rendering recommendation cards and a "Why this
+  answer" explain panel, and a what-if simulator.
 
 ## Database & schema
 
@@ -359,7 +360,8 @@ reasoning/
   thresholds.yaml         trigger rules
   engine.py               loads both; analyze(); project_time_horizon()
 frontend/
-  streamlit_app.py        minimal Streamlit page
+  streamlit_app.py        chat UI, structured input, recommendation cards,
+                           explain panel, what-if simulator
 tests/                    pytest suite (offline-friendly; see Local setup)
 .github/workflows/ci.yml  test + lint on push/PR
 Dockerfile                 backend image; runs ingest.py at build time
