@@ -323,16 +323,17 @@ file needed.
 
 ### Frontend on Streamlit Community Cloud
 
-`frontend/streamlit_app.py` reads the backend URL from `st.secrets["API_URL"]`
-(falling back to the `API_URL` env var, then to `http://localhost:8000` for
-local dev) — set it to point at whichever backend you deployed above.
+`frontend/streamlit_app.py` reads the backend URL from
+`st.secrets["BACKEND_URL"]` (falling back to the `BACKEND_URL` env var, then
+to `http://localhost:8000` for local dev) — set it to point at whichever
+backend you deployed above.
 
 1. Push the repo to GitHub (the same repo as the backend, or a fork of it).
 2. In [share.streamlit.io](https://share.streamlit.io): **New app**, pick the
    repo/branch, and set the main file path to `frontend/streamlit_app.py`.
 3. Under **Advanced settings → Secrets**, add:
    ```toml
-   API_URL = "https://<your-backend-url>"
+   BACKEND_URL = "https://<your-backend-url>"
    ```
 4. Deploy. Streamlit Community Cloud installs `requirements.txt` (shared with
    the backend — it already includes `streamlit`) and runs the app.
