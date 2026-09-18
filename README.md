@@ -46,7 +46,7 @@ reasoning/          knowledge/                    app/
   `analyze(inputs)` evaluates the thresholds and walks up to two hops
   downstream through the graph from each one that fires.
 - **`knowledge/`** — short reference documents, chunked and embedded with
-  `sentence-transformers/all-MiniLM-L6-v2`, stored in a persistent ChromaDB
+  `sentence-transformers/paraphrase-MiniLM-L3-v2`, stored in a persistent ChromaDB
   collection. `retrieve(query, tags=...)` does similarity search scoped to
   topic tags.
 - **`app/composer.py`** — for every causal chain `analyze()` finds, retrieves
@@ -72,7 +72,7 @@ document in `knowledge/sources/`:
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `str` | `"<source-filename-stem>-<chunk-index>"` |
-| `embedding` | `float[384]` | from `all-MiniLM-L6-v2` |
+| `embedding` | `float[384]` | from `paraphrase-MiniLM-L3-v2` |
 | `document` | `str` | the chunk's raw text |
 | `metadata.source` | `str` | source filename, e.g. `soil_organic_carbon.md` |
 | `metadata.year` | `int` | from the source file's frontmatter |
@@ -162,7 +162,7 @@ Run the test suite with:
 pytest
 ```
 
-The first run downloads the `all-MiniLM-L6-v2` embedding model from Hugging
+The first run downloads the `paraphrase-MiniLM-L3-v2` embedding model from Hugging
 Face (a one-time ~90MB download, cached under `~/.cache/huggingface`
 afterward). Tests that call the Groq API for real
 (`tests/test_composer.py::test_compose_recommendations_live_semi_arid_wheat`)
@@ -250,7 +250,7 @@ schemas, or the Pydantic models under `app/schemas/`.
 two parallel jobs:
 
 - **`test`** — installs `requirements.txt`, then runs `pytest`. The
-  `all-MiniLM-L6-v2` model download is cached across runs
+  `paraphrase-MiniLM-L3-v2` model download is cached across runs
   (`~/.cache/huggingface`, keyed by a fixed cache key since the model doesn't
   change). If the `GROQ_API_KEY` repository secret is configured, it's
   passed through as an env var and the one live Groq test runs for real;
@@ -276,6 +276,19 @@ it takes to update the knowledge base.
 > into an image on every deploy, attach a persistent disk at the path set by
 > `CHROMA_DB_DIR` instead, and run ingestion as a one-off/manual step rather
 > than in the Dockerfile.
+
+**Fits Render's free tier (512MB RAM):** three things keep the runtime
+footprint small. (1) `app/main.py`'s `__main__` block binds `0.0.0.0` and
+reads `$PORT` at runtime — Render/Railway assign a random port and route to
+it, so a hardcoded port would never receive traffic. (2) The embedding model
+(`knowledge/ingestion/ingest.py::get_embedder()`) is lazy-loaded and cached —
+importing the app, or even serving `/health`, never touches it; only the
+first `/chat` request that needs retrieval pays the load cost, and every
+request after that reuses the cached instance. It also uses the smaller
+`paraphrase-MiniLM-L3-v2` model rather than a larger one. (3) `torch` installs
+from PyTorch's CPU-only wheel index (see `requirements.txt`) instead of the
+default PyPI build, which bundles CUDA runtime libraries that are both
+unused here and a common cause of OOM on small containers.
 
 ### Backend on Render
 

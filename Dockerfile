@@ -18,13 +18,14 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Bake the knowledge base into the image at build time (chunks, embeds with
-# all-MiniLM-L6-v2, and stores everything in knowledge/chroma_db) so the
-# container starts ready to serve recommendations - no separate init step
-# needed at runtime. Re-run automatically on every build, so changes to
+# paraphrase-MiniLM-L3-v2, and stores everything in knowledge/chroma_db) so
+# the container starts ready to serve recommendations - no separate init
+# step needed at runtime. Re-run automatically on every build, so changes to
 # knowledge/sources/ take effect on the next deploy.
 RUN python -m knowledge.ingestion.ingest
 
 EXPOSE 8000
 
-# Render/Railway inject $PORT; default to 8000 for a plain `docker run`.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# app/main.py's __main__ block binds 0.0.0.0 and reads $PORT (Render/Railway
+# inject their own; defaults to 8000 otherwise) - see app/main.py.
+CMD ["python", "-m", "app.main"]

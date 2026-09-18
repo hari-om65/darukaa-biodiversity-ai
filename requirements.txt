@@ -1,6 +1,12 @@
+# CPU-only torch build: the default PyPI wheel bundles CUDA runtime
+# libraries (several hundred MB) that aren't needed here and are a common
+# cause of OOM on small containers (e.g. Render's 512MB free tier). This
+# index is additive (pip still uses PyPI for every other package).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
 fastapi
 uvicorn
-langchain
 chromadb
 sentence-transformers
 pydantic

@@ -11,8 +11,16 @@ Each source file may start with a YAML frontmatter block declaring metadata:
     Body text...
 
 Documents are chunked (~500 words with overlap, as a token-count proxy),
-embedded with the sentence-transformers "all-MiniLM-L6-v2" model, and stored
-in the ChromaDB collection "biodiversity_knowledge".
+embedded with the sentence-transformers "paraphrase-MiniLM-L3-v2" model, and
+stored in the ChromaDB collection "biodiversity_knowledge".
+
+The embedding model is lazy-loaded (see get_embedder()): importing this
+module never loads model weights, only the first actual call to retrieve()
+or an ingest function does, and the loaded model is cached for the life of
+the process after that. This keeps baseline memory low on small deployments
+(e.g. Render's free tier) - the app can serve /health without ever touching
+the model, and the one-time load cost is only paid when retrieval is first
+needed.
 """
 
 from __future__ import annotations
@@ -33,7 +41,7 @@ SOURCES_DIR = BASE_DIR / "sources"
 # Override with CHROMA_DB_DIR to point at a persistent volume in production.
 CHROMA_DIR = Path(os.environ.get("CHROMA_DB_DIR", str(BASE_DIR / "chroma_db")))
 COLLECTION_NAME = "biodiversity_knowledge"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "paraphrase-MiniLM-L3-v2"
 
 ALLOWED_TAGS = ["soil", "water", "land_use", "biodiversity", "climate", "human_impact"]
 
@@ -44,10 +52,19 @@ CHUNK_OVERLAP = 50
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 
+# Module-level cache, populated lazily - see get_embedder(). Must stay None
+# here; anything that instantiates SentenceTransformer at import time defeats
+# the whole point (loading model weights before we know they're needed).
 _embedder: SentenceTransformer | None = None
 
 
 def get_embedder() -> SentenceTransformer:
+    """Lazily construct and cache the embedding model on first use.
+
+    Deliberately not called at module import time - only ingest_file() and
+    retrieve() call this, so the (fairly large) model load only happens on
+    the first actual ingest/retrieve call, not at app startup.
+    """
     global _embedder
     if _embedder is None:
         _embedder = SentenceTransformer(EMBEDDING_MODEL_NAME)

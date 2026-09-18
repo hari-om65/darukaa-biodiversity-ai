@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: huggingface-all-MiniLM-L6-v2
+          key: huggingface-paraphrase-MiniLM-L3-v2
 
       - name: Run tests
         env:
