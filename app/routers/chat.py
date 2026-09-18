@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.chat_extraction import build_clarifying_message, extract_variables, missing_fields
 from app.chat_session import get_session
-from app.composer import compose_recommendations
+from app.composer import compose_recommendations_with_evidence
 from app.dependencies import get_anthropic_client
+from app.explain_builder import build_explain
 from app.schemas.chat import ChatRequest, ChatResponse, StructuredChatRequest
 from app.schemas.recommendations import RecommendationsResponse
 
@@ -50,7 +51,9 @@ def chat(
             recommendations=None,
         )
 
-    recommendations = compose_recommendations(session.variables, client=anthropic_client)
+    recommendations, enriched_chains = compose_recommendations_with_evidence(
+        session.variables, client=anthropic_client
+    )
     reply = _summarize(recommendations)
     session.history.append({"role": "assistant", "content": reply})
 
@@ -60,6 +63,7 @@ def chat(
         reply=reply,
         missing_fields=[],
         recommendations=recommendations,
+        explain=build_explain(session.variables, enriched_chains, recommendations),
     )
 
 
@@ -79,7 +83,9 @@ def chat_structured(
             detail=f"Missing required fields for structured input: {missing}",
         )
 
-    recommendations = compose_recommendations(session.variables, client=anthropic_client)
+    recommendations, enriched_chains = compose_recommendations_with_evidence(
+        session.variables, client=anthropic_client
+    )
     reply = _summarize(recommendations)
     session.history.append({"role": "assistant", "content": reply})
 
@@ -89,4 +95,5 @@ def chat_structured(
         reply=reply,
         missing_fields=[],
         recommendations=recommendations,
+        explain=build_explain(session.variables, enriched_chains, recommendations),
     )

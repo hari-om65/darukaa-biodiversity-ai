@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.chat_session import get_session
+from app.explain_builder import build_explain
 from app.schemas.whatif import ChainResult, WhatIfRequest, WhatIfResponse
 from reasoning.engine import analyze, project_time_horizon
 
@@ -47,6 +48,12 @@ def whatif(request: WhatIfRequest) -> WhatIfResponse:
     removed = [c for key, c in before_by_key.items() if key not in after_by_key]
     added = [c for key, c in after_by_key.items() if key not in before_by_key]
 
+    # explain reflects the proposed (after) scenario - the thresholds/paths
+    # under the hypothetical being simulated. /whatif never calls the
+    # composer, so evidence and recommendation_mapping are always empty here;
+    # see /chat for those.
+    explain = build_explain(after_inputs, after_chains)
+
     return WhatIfResponse(
         session_id=request.session_id,
         variable=request.variable,
@@ -56,4 +63,5 @@ def whatif(request: WhatIfRequest) -> WhatIfResponse:
         after_chains=[_to_chain_result(c) for c in after_chains],
         removed_chains=[_to_chain_result(c) for c in removed],
         added_chains=[_to_chain_result(c) for c in added],
+        explain=explain,
     )

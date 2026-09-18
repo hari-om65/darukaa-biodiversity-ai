@@ -2,6 +2,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.schemas.explain import Explain
 from app.schemas.recommendations import RecommendationsResponse
 
 
@@ -22,3 +23,4 @@ class ChatResponse(BaseModel):
     reply: str
     missing_fields: list[str] = []
     recommendations: RecommendationsResponse | None = None
+    explain: Explain = Explain()

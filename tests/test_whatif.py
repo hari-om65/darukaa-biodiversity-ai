@@ -55,6 +55,20 @@ def test_whatif_raising_soil_organic_carbon_removes_critical_low_chains():
     # /whatif simulates - it must not mutate the session's stored variables.
     assert session.variables["soil_organic_carbon"] == 0.3
 
+    # explain reflects the proposed (after) state: critical_low no longer
+    # fires once soil_organic_carbon is 1.5, but the other two thresholds
+    # still do. No composer call happens here, so evidence/mapping are empty.
+    explain = body["explain"]
+    fired_flags = {t["flag"] for t in explain["thresholds_fired"]}
+    assert fired_flags == {"water_stressed", "flagged"}
+    assert "critical_low" not in fired_flags
+
+    assert sorted(explain["graph_paths"]) == sorted(
+        [c["path"] for c in body["after_chains"]]
+    )
+    assert explain["evidence"] == []
+    assert explain["recommendation_mapping"] == []
+
 
 def test_whatif_chains_include_projected_horizon():
     session_id = "whatif-session-2"

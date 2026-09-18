@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.schemas.explain import Explain
+
 
 class WhatIfRequest(BaseModel):
     session_id: str
@@ -26,3 +28,4 @@ class WhatIfResponse(BaseModel):
     after_chains: list[ChainResult]
     removed_chains: list[ChainResult]
     added_chains: list[ChainResult]
+    explain: Explain = Explain()

@@ -126,12 +126,17 @@ def _validate_sources_are_grounded(result: RecommendationsResponse, valid_source
             raise ValueError(f"Recommendation '{rec.action}' cites unknown sources: {unknown}")
 
 
-def compose_recommendations(
+def compose_recommendations_with_evidence(
     inputs: dict[str, Any],
     client: anthropic.Anthropic | None = None,
-) -> RecommendationsResponse:
+) -> tuple[RecommendationsResponse, list[dict[str, Any]]]:
     """Build one evidence-grounded prompt from `inputs` and return validated
-    recommendations.
+    recommendations, along with the enriched chains (each reasoning chain plus
+    the evidence retrieved for it) used to build that prompt.
+
+    Callers that need to explain *how* a recommendation was reached (which
+    thresholds fired, which chunks were retrieved, ...) should use this
+    instead of compose_recommendations() to avoid re-running retrieval.
 
     Retries once (a single additional API call, with the failure reason
     appended to the prompt) if the response fails JSON parsing, Pydantic
@@ -141,7 +146,7 @@ def compose_recommendations(
 
     enriched_chains = gather_chain_evidence(inputs)
     if not enriched_chains:
-        return RecommendationsResponse(recommendations=[])
+        return RecommendationsResponse(recommendations=[]), enriched_chains
 
     valid_sources = _collect_valid_sources(enriched_chains)
     base_prompt = build_user_prompt(inputs, enriched_chains)
@@ -166,8 +171,20 @@ def compose_recommendations(
             )
             result = response.parsed_output
             _validate_sources_are_grounded(result, valid_sources)
-            return result
+            return result, enriched_chains
         except (ValidationError, ValueError, json.JSONDecodeError) as exc:
             last_error = exc
 
     raise RuntimeError(f"Failed to obtain valid recommendations after retry: {last_error}")
+
+
+def compose_recommendations(
+    inputs: dict[str, Any],
+    client: anthropic.Anthropic | None = None,
+) -> RecommendationsResponse:
+    """Build one evidence-grounded prompt from `inputs` and return validated
+    recommendations. See compose_recommendations_with_evidence() for a variant
+    that also returns the chains/evidence used to build the prompt.
+    """
+    result, _ = compose_recommendations_with_evidence(inputs, client=client)
+    return result

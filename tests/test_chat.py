@@ -92,6 +92,13 @@ def test_three_turn_conversation_reaches_recommendation():
         }
         assert body1["recommendations"] is None
         assert body1["reply"]
+        # Nothing has run yet, so explain is the empty default.
+        assert body1["explain"] == {
+            "thresholds_fired": [],
+            "graph_paths": [],
+            "evidence": [],
+            "recommendation_mapping": [],
+        }
 
         # Turn 2: partial data - clarifying question should only cover what's
         # still missing, not re-ask about soil carbon or rainfall.
@@ -123,6 +130,30 @@ def test_three_turn_conversation_reaches_recommendation():
         assert len(body3["recommendations"]["recommendations"]) == 1
         assert body3["recommendations"]["recommendations"][0]["sources"] == [real_source]
         assert "recommend" in body3["reply"].lower()
+
+        # explain: thresholds fired, paths walked, exact chunks retrieved
+        # (with source + similarity score), and how they map to the
+        # recommendation.
+        explain = body3["explain"]
+        fired_flags = {t["flag"] for t in explain["thresholds_fired"]}
+        assert fired_flags == {"critical_low", "water_stressed", "flagged"}
+
+        assert len(explain["graph_paths"]) >= 3
+        assert ["soil_organic_carbon", "microbial_diversity"] in explain["graph_paths"]
+
+        assert explain["evidence"]
+        for chain_evidence in explain["evidence"]:
+            assert chain_evidence["path"]
+            for chunk in chain_evidence["chunks"]:
+                assert chunk["source"]
+                assert isinstance(chunk["score"], float)
+                assert isinstance(chunk["distance"], float)
+                assert chunk["text"]
+
+        assert len(explain["recommendation_mapping"]) == 1
+        mapping = explain["recommendation_mapping"][0]
+        assert mapping["sources"] == [real_source]
+        assert mapping["supporting_chains"]
     finally:
         app.dependency_overrides.pop(get_anthropic_client, None)
 
