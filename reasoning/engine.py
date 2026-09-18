@@ -125,3 +125,37 @@ def analyze(
         node = threshold.get("node", threshold["variable"])
         results.extend(_walk_downstream(graph, node, MAX_HOPS))
     return results
+
+
+def project_time_horizon(chain: dict[str, Any]) -> str:
+    """Rough, heuristic-only projection of when a chain's effect might become
+    observable - "short", "medium", or "long" term. This is NOT a calibrated
+    forecast (no timeseries data backs it); it's a proxy derived purely from
+    reasoning/graph.yaml's strength values and the chain's hop count, meant to
+    give a directional sense of urgency alongside a chain's relation/strength.
+
+    Heuristic:
+        score = strength_rank(chain["strength"]) - (hops - 1)
+
+    where strength_rank is low=0/medium=1/high=2 and hops = len(path) - 1.
+    Each extra hop beyond the first docks one strength level, reflecting that
+    an effect cascading through an intermediate variable plausibly takes
+    longer to manifest than a direct one. The chain's strength is already the
+    weakest link along its path (see _compose_strength), so a chain's horizon
+    is bounded by both its least confident edge and its path length:
+
+    - score >= 2 -> "short"  (only a 1-hop, high-strength chain qualifies -
+      a strong, direct link should show up fastest, e.g. within a season/year)
+    - score <= 0 -> "long"   (a low-strength chain at any hop count, or any
+      2-hop chain no stronger than medium - weak signals and multi-step
+      cascades both plausibly take years, e.g. soil carbon accumulation)
+    - otherwise  -> "medium" (everything in between, roughly 1-3 years)
+    """
+    hops = len(chain["path"]) - 1
+    score = _STRENGTH_RANK.get(chain["strength"], 0) - (hops - 1)
+
+    if score >= 2:
+        return "short"
+    if score <= 0:
+        return "long"
+    return "medium"
