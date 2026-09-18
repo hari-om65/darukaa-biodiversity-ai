@@ -1,0 +1,22 @@
+# Each threshold names the input `variable` to check and the causal-graph
+# `node` to start a downstream walk from once triggered. For most thresholds
+# these are the same; for a categorical input like `crop`, the triggering
+# value itself ("monoculture") is what appears as a node in graph.yaml.
+thresholds:
+  - variable: soil_organic_carbon
+    operator: "<"
+    value: 0.5
+    flag: critical_low
+    node: soil_organic_carbon
+
+  - variable: rainfall
+    operator: "=="
+    value: low
+    flag: water_stressed
+    node: rainfall
+
+  - variable: crop
+    operator: "=="
+    value: monoculture
+    flag: flagged
+    node: monoculture

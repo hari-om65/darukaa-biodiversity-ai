@@ -1,0 +1,35 @@
+edges:
+  - from: soil_organic_carbon
+    to: microbial_diversity
+    relation: positive
+    strength: high
+
+  - from: soil_organic_carbon
+    to: water_retention
+    relation: positive
+    strength: medium
+
+  - from: rainfall
+    to: species_survival
+    relation: positive
+    strength: high
+
+  - from: monoculture
+    to: habitat_fragmentation
+    relation: positive
+    strength: high
+
+  - from: habitat_fragmentation
+    to: species_richness
+    relation: negative
+    strength: high
+
+  - from: water_retention
+    to: species_survival
+    relation: positive
+    strength: medium
+
+  - from: microbial_diversity
+    to: pollinator_support
+    relation: positive
+    strength: medium

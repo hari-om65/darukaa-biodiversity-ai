@@ -10,3 +10,4 @@ knowledge/chroma_db/*
 !knowledge/chroma_db/.gitkeep
 .env
 .DS_Store
+pytest_ingest.log
