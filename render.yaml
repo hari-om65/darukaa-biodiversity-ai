@@ -1,0 +1,24 @@
+# Render Blueprint - see https://render.com/docs/blueprint-spec
+#
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and point it at the repo. Render reads this file and
+# provisions the service below, building it from the repo's Dockerfile
+# (which runs knowledge ingestion as part of the build - see Dockerfile).
+services:
+  - type: web
+    name: darukaa-biodiversity-ai
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      # Values are set in the Render dashboard's Environment tab, not here -
+      # sync: false means "don't sync from a linked env group; prompt for it
+      # in the dashboard instead". Never commit real values to this file.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: CHROMA_DB_DIR
+        sync: false

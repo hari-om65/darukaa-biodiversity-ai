@@ -15,6 +15,7 @@ never an invented statistic.
 - [How the pipeline works end to end](#how-the-pipeline-works-end-to-end)
 - [API reference](#api-reference)
 - [CI/CD](#cicd)
+- [Deployment](#deployment)
 - [Project layout](#project-layout)
 
 ## Architecture overview
@@ -256,9 +257,71 @@ two parallel jobs:
 - **`lint`** — installs `requirements.txt`, then runs `ruff check .`. Config
   lives in `pyproject.toml` (line length 120, target Python 3.11).
 
-There is no deploy step yet — add one (e.g. build + push a container image,
-or deploy to your platform of choice) once there's a target environment to
-ship to.
+There is no automated deploy step (CD) yet — deploys below are manual/
+platform-triggered. See [Deployment](#deployment).
+
+## Deployment
+
+The backend is a single Docker image ([`Dockerfile`](Dockerfile)): install
+dependencies, copy the app in, then **run
+`python -m knowledge.ingestion.ingest` at build time** so the ChromaDB
+knowledge base is baked into the image — the container starts ready to serve
+recommendations, with no separate init step at runtime. Because ingestion
+re-runs on every build, editing `knowledge/sources/` and redeploying is all
+it takes to update the knowledge base.
+
+> This bakes the vector store into an image layer, which is fine for a
+> knowledge base this size. If it grows past what's comfortable to rebuild
+> into an image on every deploy, attach a persistent disk at the path set by
+> `CHROMA_DB_DIR` instead, and run ingestion as a one-off/manual step rather
+> than in the Dockerfile.
+
+### Backend on Render
+
+This repo includes a [`render.yaml`](render.yaml) Blueprint that provisions
+a Docker-based web service from the `Dockerfile`.
+
+1. Push the repo to GitHub (or GitLab).
+2. In the Render dashboard: **New +** → **Blueprint**, and point it at the repo.
+   Render reads `render.yaml` and provisions the service.
+3. On the service's **Environment** tab, set `ANTHROPIC_API_KEY` (required)
+   and, if you want a non-default store location, `CHROMA_DB_DIR` — both are
+   declared in `render.yaml` with `sync: false`, so Render prompts for them
+   rather than expecting a value in the file. `ANTHROPIC_MODEL` already
+   defaults to `claude-sonnet-4-6` there; override it the same way if needed.
+4. Deploy. Render builds the `Dockerfile` (ingestion runs as part of the
+   build), starts the container, and binds it to the `$PORT` it injects — the
+   Dockerfile's `CMD` already reads that.
+5. Confirm with `curl https://<your-service>.onrender.com/health`.
+
+### Backend on Railway
+
+Railway auto-detects the `Dockerfile` at the repo root — no extra config
+file needed.
+
+1. Push the repo to GitHub.
+2. In Railway: **New Project** → **Deploy from GitHub repo**, select this repo.
+3. Under **Variables**, set `ANTHROPIC_API_KEY` (required), and optionally
+   `ANTHROPIC_MODEL` / `CHROMA_DB_DIR`.
+4. Railway builds the `Dockerfile` (same build-time ingestion as Render) and
+   deploys, injecting its own `$PORT`, which the Dockerfile's `CMD` respects.
+5. Confirm with `curl https://<your-app>.up.railway.app/health`.
+
+### Frontend on Streamlit Community Cloud
+
+`frontend/streamlit_app.py` reads the backend URL from `st.secrets["API_URL"]`
+(falling back to the `API_URL` env var, then to `http://localhost:8000` for
+local dev) — set it to point at whichever backend you deployed above.
+
+1. Push the repo to GitHub (the same repo as the backend, or a fork of it).
+2. In [share.streamlit.io](https://share.streamlit.io): **New app**, pick the
+   repo/branch, and set the main file path to `frontend/streamlit_app.py`.
+3. Under **Advanced settings → Secrets**, add:
+   ```toml
+   API_URL = "https://<your-backend-url>"
+   ```
+4. Deploy. Streamlit Community Cloud installs `requirements.txt` (shared with
+   the backend — it already includes `streamlit`) and runs the app.
 
 ## Project layout
 
@@ -284,4 +347,6 @@ frontend/
   streamlit_app.py        minimal Streamlit page
 tests/                    pytest suite (offline-friendly; see Local setup)
 .github/workflows/ci.yml  test + lint on push/PR
+Dockerfile                 backend image; runs ingest.py at build time
+render.yaml                Render Blueprint for the backend
 ```

@@ -12,3 +12,4 @@ knowledge/chroma_db/*
 .env
 .DS_Store
 pytest_ingest.log
+docker_build.log

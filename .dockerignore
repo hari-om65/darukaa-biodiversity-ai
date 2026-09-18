@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+venv
+env
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.env
+knowledge/chroma_db
+tests
+README.md
