@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+langchain
+chromadb
+sentence-transformers
+pydantic
+networkx
+pyyaml
+streamlit
+pytest
+anthropic
